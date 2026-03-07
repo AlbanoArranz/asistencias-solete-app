@@ -58,3 +58,7 @@ Notificaciones v2.7:
 - GET /api/v1/notifications/unread-count
 - POST /api/v1/notifications/{id}/read
 - Evento interno: `ticket_assigned_to_me` al asignar/reasignar
+
+Mobile v2.8:
+- Pantalla/lista de notificaciones en app
+- Acción: marcar como leída y abrir parte directamente
