@@ -16,5 +16,8 @@ class Ticket(Base):
     technician_id: Mapped[int | None] = mapped_column(nullable=True)
     work_summary: Mapped[str] = mapped_column(Text, default="")
     customer_acceptance: Mapped[bool] = mapped_column(Boolean, default=False)
+    scheduled_start_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    scheduled_end_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    assigned_by_user_id: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

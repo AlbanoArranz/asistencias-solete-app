@@ -45,3 +45,9 @@ Checklist y cierre:
 
 Regla de cierre v2.4:
 - `closed` requiere: foto + firma + checklist obligatorio completado + resumen de cierre + aceptación cliente.
+
+Agenda/asignación v2.5:
+- GET /api/v1/tickets/schedule?day=YYYY-MM-DD&technician_id=
+- PATCH /api/v1/tickets/{id}/assign
+- PATCH /api/v1/tickets/{id}/schedule
+- Eventos generados: `technician_assigned|technician_reassigned|scheduled`

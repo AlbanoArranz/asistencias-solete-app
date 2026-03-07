@@ -8,7 +8,7 @@ from app.models.attachment import Attachment
 from app.models.signature import Signature
 from app.models.checklist_item import ChecklistItem
 from app.models.user import User
-from app.schemas.ticket import TicketCreate, TicketOut, TicketStatusUpdate, CloseSummaryUpdate
+from app.schemas.ticket import TicketCreate, TicketOut, TicketStatusUpdate, CloseSummaryUpdate, TicketAssignUpdate, TicketScheduleUpdate
 from app.schemas.ticket_event import TicketEventOut
 from app.schemas.checklist import ChecklistItemCreate, ChecklistItemOut, ChecklistItemUpdate
 from app.api.deps import get_current_user, require_roles
@@ -172,6 +172,80 @@ def upsert_close_summary(
     t.work_summary = payload.work_summary.strip()
     t.customer_acceptance = payload.customer_acceptance
     db.add(TicketEvent(ticket_id=ticket_id, actor_user_id=user.id, event_type="close_summary_upserted", note=t.work_summary[:80]))
+    db.commit()
+    db.refresh(t)
+    return t
+
+
+@router.get("/schedule", response_model=list[TicketOut])
+def get_schedule(
+    day: str | None = Query(default=None),
+    technician_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    q = db.query(Ticket)
+    if user.role == "technician":
+        q = q.filter(Ticket.technician_id == user.id)
+    elif technician_id is not None:
+        q = q.filter(Ticket.technician_id == technician_id)
+
+    if day:
+        q = q.filter(Ticket.scheduled_start_at.is_not(None))
+        q = q.filter(Ticket.scheduled_start_at >= f"{day} 00:00:00")
+        q = q.filter(Ticket.scheduled_start_at <= f"{day} 23:59:59")
+
+    return q.order_by(Ticket.scheduled_start_at.asc().nullslast(), Ticket.created_at.desc()).all()
+
+
+@router.patch("/{ticket_id}/assign", response_model=TicketOut)
+def assign_ticket(
+    ticket_id: int,
+    payload: TicketAssignUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("backoffice", "admin")),
+):
+    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    prev = t.technician_id
+    t.technician_id = payload.technician_id
+    t.assigned_by_user_id = user.id
+    if t.status == "new":
+        t.status = "assigned"
+
+    db.add(TicketEvent(
+        ticket_id=t.id,
+        actor_user_id=user.id,
+        event_type="technician_reassigned" if prev else "technician_assigned",
+        note=f"from={prev} to={payload.technician_id}",
+    ))
+    db.commit()
+    db.refresh(t)
+    return t
+
+
+@router.patch("/{ticket_id}/schedule", response_model=TicketOut)
+def schedule_ticket(
+    ticket_id: int,
+    payload: TicketScheduleUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("backoffice", "admin")),
+):
+    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    t.scheduled_start_at = payload.scheduled_start_at
+    t.scheduled_end_at = payload.scheduled_end_at
+
+    db.add(TicketEvent(
+        ticket_id=t.id,
+        actor_user_id=user.id,
+        event_type="scheduled",
+        note=f"start={payload.scheduled_start_at} end={payload.scheduled_end_at}",
+    ))
     db.commit()
     db.refresh(t)
     return t
