@@ -51,3 +51,10 @@ Agenda/asignación v2.5:
 - PATCH /api/v1/tickets/{id}/assign
 - PATCH /api/v1/tickets/{id}/schedule
 - Eventos generados: `technician_assigned|technician_reassigned|scheduled`
+
+
+Notificaciones v2.7:
+- GET /api/v1/notifications
+- GET /api/v1/notifications/unread-count
+- POST /api/v1/notifications/{id}/read
+- Evento interno: `ticket_assigned_to_me` al asignar/reasignar

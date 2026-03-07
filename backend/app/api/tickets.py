@@ -8,6 +8,7 @@ from app.models.attachment import Attachment
 from app.models.signature import Signature
 from app.models.checklist_item import ChecklistItem
 from app.models.user import User
+from app.models.notification import Notification
 from app.schemas.ticket import TicketCreate, TicketOut, TicketStatusUpdate, CloseSummaryUpdate, TicketAssignUpdate, TicketScheduleUpdate
 from app.schemas.ticket_event import TicketEventOut
 from app.schemas.checklist import ChecklistItemCreate, ChecklistItemOut, ChecklistItemUpdate
@@ -220,6 +221,18 @@ def assign_ticket(
         actor_user_id=user.id,
         event_type="technician_reassigned" if prev else "technician_assigned",
         note=f"from={prev} to={payload.technician_id}",
+    ))
+    db.add(TicketEvent(
+        ticket_id=t.id,
+        actor_user_id=user.id,
+        event_type="ticket_assigned_to_me",
+        note=f"target={payload.technician_id}",
+    ))
+    db.add(Notification(
+        user_id=payload.technician_id,
+        kind="ticket_assigned_to_me",
+        title=f"Nuevo parte asignado: {t.code}",
+        ticket_id=t.id,
     ))
     db.commit()
     db.refresh(t)

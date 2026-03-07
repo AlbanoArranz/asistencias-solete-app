@@ -21,6 +21,7 @@ export default function App() {
   const [scheduleDay, setScheduleDay] = useState<string>(new Date().toISOString().slice(0,10));
   const [scheduleTickets, setScheduleTickets] = useState<Ticket[]>([]);
   const [assignTechId, setAssignTechId] = useState<string>("3");
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const login = async () => {
     const res = await fetch(`${API}/auth/login`, {
@@ -33,6 +34,7 @@ export default function App() {
       const me = await meRes.json();
       setRole(me?.role || 'technician');
       await loadTickets(data.access_token, statusFilter);
+      await loadUnreadCount(data.access_token);
     }
   };
 
@@ -146,6 +148,15 @@ export default function App() {
 
 
 
+
+
+  const loadUnreadCount = async (jwt = token) => {
+    if (!jwt) return;
+    const res = await fetch(`${API}/notifications/unread-count`, { headers: { Authorization: `Bearer ${jwt}` } });
+    const data = await res.json();
+    setUnreadCount(Number(data?.unread || 0));
+  };
+
   const loadSchedule = async () => {
     if (!token) return;
     const q = `?day=${encodeURIComponent(scheduleDay)}`;
@@ -163,6 +174,7 @@ export default function App() {
     });
     await openTicket(selected);
     await loadTickets(token, statusFilter);
+    await loadUnreadCount(token);
   };
 
   if (!token) {
@@ -179,8 +191,8 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Mis partes</Text>
-        <Button title="Refrescar" onPress={() => loadTickets()} />
+        <View><Text style={styles.title}>Mis partes</Text><Text>Nuevas asignaciones: {unreadCount}</Text></View>
+        <Button title="Refrescar" onPress={async () => { await loadTickets(); await loadUnreadCount(); }} />
       </View>
 
       {!selected ? (
