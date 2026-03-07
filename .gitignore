@@ -11,3 +11,6 @@ mobile/node_modules/
 
 # OS
 .DS_Store
+
+# local backups
+*.bak-*
