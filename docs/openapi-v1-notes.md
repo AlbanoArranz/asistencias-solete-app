@@ -10,6 +10,7 @@ Endpoints iniciales implementados:
 - GET /api/v1/tickets/{id}/events
 - GET /api/v1/tickets/{id}/attachments
 - POST /api/v1/tickets/{id}/attachments
+- POST /api/v1/tickets/{id}/attachments/upload (multipart)
 - GET /api/v1/tickets/{id}/signature
 - PUT /api/v1/tickets/{id}/signature
 
@@ -28,3 +29,9 @@ Filtros disponibles en listado:
 
 Regla de cierre v2.2:
 - `closed` requiere al menos 1 adjunto (foto) + firma registrada.
+
+
+Mobile v2.3:
+- Timeline de eventos por parte (`GET /tickets/{id}/events`)
+- Subida real de foto desde galería (`expo-image-picker`)
+- Firma en canvas (`react-native-signature-canvas`)

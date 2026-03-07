@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.api.deps import get_current_user
@@ -10,6 +12,8 @@ from app.models.ticket_event import TicketEvent
 from app.schemas.evidence import AttachmentCreate, AttachmentOut, SignatureUpsert, SignatureOut
 
 router = APIRouter(prefix="/tickets", tags=["evidence"])
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 def _get_ticket_or_404(ticket_id: int, db: Session) -> Ticket:
@@ -17,6 +21,35 @@ def _get_ticket_or_404(ticket_id: int, db: Session) -> Ticket:
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return t
+
+
+
+
+@router.post("/{ticket_id}/attachments/upload", response_model=AttachmentOut)
+def upload_attachment(ticket_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    t = _get_ticket_or_404(ticket_id, db)
+    if user.role == "technician" and t.technician_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    safe_name = f"{ticket_id}-{user.id}-{file.filename}"
+    dest = UPLOAD_DIR / safe_name
+    content = file.file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    a = Attachment(
+        ticket_id=ticket_id,
+        kind="photo",
+        filename=safe_name,
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        created_by_user_id=user.id,
+    )
+    db.add(a)
+    db.add(TicketEvent(ticket_id=ticket_id, actor_user_id=user.id, event_type="attachment_uploaded", note=safe_name))
+    db.commit()
+    db.refresh(a)
+    return a
 
 
 @router.get("/{ticket_id}/attachments", response_model=list[AttachmentOut])
