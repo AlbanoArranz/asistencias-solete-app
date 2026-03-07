@@ -12,11 +12,15 @@ export default function App() {
   const [email, setEmail] = useState('tecnico1@solete.local');
   const [password, setPassword] = useState('tecnico123');
   const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string>("technician");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [scheduleDay, setScheduleDay] = useState<string>(new Date().toISOString().slice(0,10));
+  const [scheduleTickets, setScheduleTickets] = useState<Ticket[]>([]);
+  const [assignTechId, setAssignTechId] = useState<string>("3");
 
   const login = async () => {
     const res = await fetch(`${API}/auth/login`, {
@@ -25,6 +29,9 @@ export default function App() {
     const data = await res.json();
     if (data.access_token) {
       setToken(data.access_token);
+      const meRes = await fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${data.access_token}` } });
+      const me = await meRes.json();
+      setRole(me?.role || 'technician');
       await loadTickets(data.access_token, statusFilter);
     }
   };
@@ -137,6 +144,27 @@ export default function App() {
     await openTicket(selected);
   };
 
+
+
+  const loadSchedule = async () => {
+    if (!token) return;
+    const q = `?day=${encodeURIComponent(scheduleDay)}`;
+    const res = await fetch(`${API}/tickets/schedule${q}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    setScheduleTickets(Array.isArray(data) ? data : []);
+  };
+
+  const reassignSelected = async () => {
+    if (!token || !selected || role === 'technician') return;
+    await fetch(`${API}/tickets/${selected.id}/assign`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ technician_id: Number(assignTechId) })
+    });
+    await openTicket(selected);
+    await loadTickets(token, statusFilter);
+  };
+
   if (!token) {
     return (
       <SafeAreaView style={styles.container}>
@@ -161,6 +189,18 @@ export default function App() {
             <TextInput style={[styles.input, { flex: 1 }]} value={statusFilter} onChangeText={setStatusFilter} placeholder="Filtro estado" />
             <Button title="Filtrar" onPress={() => loadTickets(token, statusFilter)} />
           </View>
+          <Text style={styles.subtitle}>Agenda (día)</Text>
+          <View style={styles.filterRow}>
+            <TextInput style={[styles.input, { flex: 1 }]} value={scheduleDay} onChangeText={setScheduleDay} placeholder="YYYY-MM-DD" />
+            <Button title="Cargar agenda" onPress={loadSchedule} />
+          </View>
+          {scheduleTickets.map((st) => (
+            <View key={`sch-${st.id}`} style={styles.eventItem}>
+              <Text>{st.code} · {st.title}</Text>
+              <Text>{st.status} · tech:{st.technician_id ?? '-'}</Text>
+            </View>
+          ))}
+
           <FlatList
             data={tickets}
             keyExtractor={(item) => String(item.id)}
@@ -189,6 +229,12 @@ export default function App() {
             <View style={styles.actionsRow}>
               <Button title="Subir foto" onPress={uploadPhoto} />
             </View>
+            {role !== 'technician' && (
+              <View style={styles.filterRow}>
+                <TextInput style={[styles.input, { flex: 1 }]} value={assignTechId} onChangeText={setAssignTechId} placeholder="ID técnico" />
+                <Button title="Reasignar" onPress={reassignSelected} />
+              </View>
+            )}
 
             <Text style={styles.subtitle}>Firma cliente</Text>
             <View style={{ height: 180, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, overflow: 'hidden' }}>
