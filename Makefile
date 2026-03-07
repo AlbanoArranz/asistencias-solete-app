@@ -1,4 +1,4 @@
-.PHONY: dev backend-install backend-run mobile-install mobile-start
+.PHONY: dev backend-install backend-run mobile-install mobile-start smoke
 
 dev:
 	./scripts/dev.sh
@@ -14,3 +14,6 @@ mobile-install:
 
 mobile-start:
 	cd mobile && npx expo start
+
+smoke:
+	./scripts/smoke.sh

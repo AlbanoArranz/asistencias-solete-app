@@ -46,3 +46,14 @@ Set your server LAN IP in `mobile/app.json`:
 "extra": { "apiUrl": "http://<TU_IP_LAN>:8000/api/v1" }
 ```
 Then restart Expo and ensure phone + server are on same Wi‑Fi.
+
+
+## Smoke test rápido
+```bash
+make smoke
+```
+
+Opcional URL custom:
+```bash
+./scripts/smoke.sh http://localhost:8000
+```
