@@ -57,3 +57,15 @@ Opcional URL custom:
 ```bash
 ./scripts/smoke.sh http://localhost:8000
 ```
+
+
+## Seed de datos demo
+Con backend levantado:
+```bash
+make demo-seed
+```
+
+Opcional:
+```bash
+SEED_DAY=2026-03-10 SEED_TECH_ID=3 ./scripts/demo-seed.sh http://localhost:8000
+```

@@ -1,4 +1,4 @@
-.PHONY: dev backend-install backend-run mobile-install mobile-start smoke
+.PHONY: dev backend-install backend-run mobile-install mobile-start smoke demo-seed
 
 dev:
 	./scripts/dev.sh
@@ -17,3 +17,6 @@ mobile-start:
 
 smoke:
 	./scripts/smoke.sh
+
+demo-seed:
+	./scripts/demo-seed.sh
