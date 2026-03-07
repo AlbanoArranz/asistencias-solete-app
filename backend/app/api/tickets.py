@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
+from app.models.attachment import Attachment
+from app.models.signature import Signature
 from app.models.user import User
 from app.schemas.ticket import TicketCreate, TicketOut, TicketStatusUpdate
 from app.schemas.ticket_event import TicketEventOut
@@ -113,6 +115,13 @@ def update_status(
     nxt = payload.status
     if nxt not in ALLOWED_TRANSITIONS.get(t.status, set()):
         raise HTTPException(status_code=400, detail=f"Transition {t.status} -> {nxt} not allowed")
+
+    # cierre con evidencia mínima
+    if nxt == "closed":
+        photos_count = db.query(Attachment).filter(Attachment.ticket_id == t.id).count()
+        sig = db.query(Signature).filter(Signature.ticket_id == t.id).first()
+        if photos_count < 1 or not sig:
+            raise HTTPException(status_code=400, detail="Closing requires at least 1 photo and signature")
 
     prev = t.status
     t.status = nxt

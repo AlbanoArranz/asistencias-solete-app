@@ -47,6 +47,25 @@ export default function App() {
     }
   };
 
+
+  const addMockPhoto = async () => {
+    if (!token || !selected) return;
+    await fetch(`${API}/tickets/${selected.id}/attachments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ filename: `photo-${Date.now()}.jpg`, content_type: 'image/jpeg', size_bytes: 123456 })
+    });
+  };
+
+  const addMockSignature = async () => {
+    if (!token || !selected) return;
+    await fetch(`${API}/tickets/${selected.id}/signature`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ signer_name: 'Cliente Demo', signer_role: 'Responsable', image_base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB' })
+    });
+  };
+
   if (!token) {
     return (
       <SafeAreaView style={styles.container}>
@@ -99,6 +118,10 @@ export default function App() {
             <Button title="En progreso" onPress={() => changeStatus('in_progress')} />
             <Button title="Resuelto" onPress={() => changeStatus('resolved')} />
             <Button title="Cerrar" onPress={() => changeStatus('closed')} />
+          </View>
+          <View style={styles.actionsRow}>
+            <Button title="Añadir foto" onPress={addMockPhoto} />
+            <Button title="Añadir firma" onPress={addMockSignature} />
           </View>
 
           <Button title="Volver" onPress={() => setSelected(null)} />

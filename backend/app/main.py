@@ -4,9 +4,12 @@ from app.db.session import Base, engine, SessionLocal
 from app.models.user import User
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
+from app.models.attachment import Attachment
+from app.models.signature import Signature
 from app.services.security import hash_password
 from app.api.auth import router as auth_router
 from app.api.tickets import router as tickets_router
+from app.api.evidence import router as evidence_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -34,3 +37,4 @@ def health():
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(tickets_router, prefix="/api/v1")
+app.include_router(evidence_router, prefix="/api/v1")
