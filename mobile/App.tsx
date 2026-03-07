@@ -6,6 +6,7 @@ import Signature from 'react-native-signature-canvas';
 type Ticket = { id: number; code: string; title: string; status: string; priority: string };
 type TicketEvent = { id: number; event_type: string; from_status?: string; to_status?: string; note?: string; created_at: string };
 type ChecklistItem = { id: number; label: string; required: boolean; done: boolean };
+type Notification = { id: number; kind: string; title: string; ticket_id?: number; read: boolean; created_at: string };
 const API = 'http://localhost:8000/api/v1';
 
 export default function App() {
@@ -22,6 +23,8 @@ export default function App() {
   const [scheduleTickets, setScheduleTickets] = useState<Ticket[]>([]);
   const [assignTechId, setAssignTechId] = useState<string>("3");
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState<boolean>(false);
 
   const login = async () => {
     const res = await fetch(`${API}/auth/login`, {
@@ -35,6 +38,7 @@ export default function App() {
       setRole(me?.role || 'technician');
       await loadTickets(data.access_token, statusFilter);
       await loadUnreadCount(data.access_token);
+      await loadNotifications(data.access_token);
     }
   };
 
@@ -150,6 +154,30 @@ export default function App() {
 
 
 
+
+
+  const loadNotifications = async (jwt = token) => {
+    if (!jwt) return;
+    const res = await fetch(`${API}/notifications`, { headers: { Authorization: `Bearer ${jwt}` } });
+    const data = await res.json();
+    setNotifications(Array.isArray(data) ? data : []);
+  };
+
+  const markNotificationRead = async (n: Notification) => {
+    if (!token) return;
+    await fetch(`${API}/notifications/${n.id}/read`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    await loadNotifications(token);
+    await loadUnreadCount(token);
+    if (n.ticket_id) {
+      const res = await fetch(`${API}/tickets/${n.ticket_id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const ticket = await res.json();
+      if (ticket?.id) {
+        setShowNotifications(false);
+        await openTicket(ticket);
+      }
+    }
+  };
+
   const loadUnreadCount = async (jwt = token) => {
     if (!jwt) return;
     const res = await fetch(`${API}/notifications/unread-count`, { headers: { Authorization: `Bearer ${jwt}` } });
@@ -192,8 +220,21 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
         <View><Text style={styles.title}>Mis partes</Text><Text>Nuevas asignaciones: {unreadCount}</Text></View>
-        <Button title="Refrescar" onPress={async () => { await loadTickets(); await loadUnreadCount(); }} />
+        <View style={{flexDirection:"row", gap:8}}><Button title="Notif" onPress={async () => { await loadNotifications(); setShowNotifications(!showNotifications); }} /><Button title="Refrescar" onPress={async () => { await loadTickets(); await loadUnreadCount(); await loadNotifications(); }} /></View>
       </View>
+
+      {showNotifications && (
+        <View style={styles.card}>
+          <Text style={styles.subtitle}>Notificaciones</Text>
+          {notifications.length === 0 && <Text>Sin notificaciones</Text>}
+          {notifications.map((n) => (
+            <View key={`n-${n.id}`} style={styles.eventItem}>
+              <Text>{n.read ? '✅' : '🆕'} {n.title}</Text>
+              <Button title={n.read ? 'Abrir' : 'Marcar leído y abrir'} onPress={() => markNotificationRead(n)} />
+            </View>
+          ))}
+        </View>
+      )}
 
       {!selected ? (
         <>
