@@ -13,11 +13,6 @@ class TicketStatusUpdate(BaseModel):
     status: str
 
 
-class CloseSummaryUpdate(BaseModel):
-    work_summary: str
-    customer_acceptance: bool = True
-
-
 class TicketOut(BaseModel):
     id: int
     code: str
@@ -26,8 +21,6 @@ class TicketOut(BaseModel):
     status: str
     priority: str
     technician_id: int | None
-    work_summary: str
-    customer_acceptance: bool
     created_at: datetime
 
     class Config:

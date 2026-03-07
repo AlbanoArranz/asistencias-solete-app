@@ -6,7 +6,6 @@ from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
 from app.models.attachment import Attachment
 from app.models.signature import Signature
-from app.models.checklist_item import ChecklistItem
 from app.services.security import hash_password
 from app.api.auth import router as auth_router
 from app.api.tickets import router as tickets_router

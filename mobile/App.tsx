@@ -5,6 +5,7 @@ import Signature from 'react-native-signature-canvas';
 
 type Ticket = { id: number; code: string; title: string; status: string; priority: string };
 type TicketEvent = { id: number; event_type: string; from_status?: string; to_status?: string; note?: string; created_at: string };
+type ChecklistItem = { id: number; label: string; required: boolean; done: boolean };
 const API = 'http://localhost:8000/api/v1';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [events, setEvents] = useState<TicketEvent[]>([]);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
 
   const login = async () => {
     const res = await fetch(`${API}/auth/login`, {
@@ -38,9 +40,14 @@ export default function App() {
   const openTicket = async (t: Ticket) => {
     setSelected(t);
     if (!token) return;
-    const res = await fetch(`${API}/tickets/${t.id}/events`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    setEvents(Array.isArray(data) ? data : []);
+    const [evRes, ckRes] = await Promise.all([
+      fetch(`${API}/tickets/${t.id}/events`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${API}/tickets/${t.id}/checklist`, { headers: { Authorization: `Bearer ${token}` } })
+    ]);
+    const evData = await evRes.json();
+    const ckData = await ckRes.json();
+    setEvents(Array.isArray(evData) ? evData : []);
+    setChecklist(Array.isArray(ckData) ? ckData : []);
   };
 
   const changeStatus = async (nextStatus: string) => {
@@ -108,6 +115,28 @@ export default function App() {
     await openTicket(selected);
   };
 
+
+
+  const toggleChecklist = async (item: ChecklistItem) => {
+    if (!token || !selected) return;
+    await fetch(`${API}/tickets/${selected.id}/checklist/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ done: !item.done })
+    });
+    await openTicket(selected);
+  };
+
+  const saveCloseSummary = async () => {
+    if (!token || !selected) return;
+    await fetch(`${API}/tickets/${selected.id}/close-summary`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ work_summary: 'Trabajo realizado en máquina y validado con cliente.', customer_acceptance: true })
+    });
+    await openTicket(selected);
+  };
+
   if (!token) {
     return (
       <SafeAreaView style={styles.container}>
@@ -165,6 +194,15 @@ export default function App() {
             <View style={{ height: 180, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, overflow: 'hidden' }}>
               <Signature onOK={saveSignature} descriptionText="Firma aquí" clearText="Limpiar" confirmText="Guardar" webStyle={`.m-signature-pad--footer {display:flex;}`}/>
             </View>
+
+            <Text style={styles.subtitle}>Checklist</Text>
+            {checklist.map((it) => (
+              <View key={it.id} style={styles.eventItem}>
+                <Text>{it.done ? '✅' : '⬜'} {it.label} {it.required ? '(req)' : ''}</Text>
+                <Button title={it.done ? 'Desmarcar' : 'Completar'} onPress={() => toggleChecklist(it)} />
+              </View>
+            ))}
+            <Button title="Guardar resumen cierre" onPress={saveCloseSummary} />
 
             <Text style={styles.subtitle}>Timeline</Text>
             {events.map((ev) => (

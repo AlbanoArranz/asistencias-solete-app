@@ -6,11 +6,9 @@ from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
 from app.models.attachment import Attachment
 from app.models.signature import Signature
-from app.models.checklist_item import ChecklistItem
 from app.models.user import User
-from app.schemas.ticket import TicketCreate, TicketOut, TicketStatusUpdate, CloseSummaryUpdate
+from app.schemas.ticket import TicketCreate, TicketOut, TicketStatusUpdate
 from app.schemas.ticket_event import TicketEventOut
-from app.schemas.checklist import ChecklistItemCreate, ChecklistItemOut, ChecklistItemUpdate
 from app.api.deps import get_current_user, require_roles
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
@@ -101,82 +99,6 @@ def get_ticket_events(ticket_id: int, db: Session = Depends(get_db), user: User 
     return db.query(TicketEvent).filter(TicketEvent.ticket_id == ticket_id).order_by(TicketEvent.created_at.desc()).all()
 
 
-@router.get("/{ticket_id}/checklist", response_model=list[ChecklistItemOut])
-def list_checklist(ticket_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Not found")
-    if user.role == "technician" and t.technician_id != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    return db.query(ChecklistItem).filter(ChecklistItem.ticket_id == ticket_id).order_by(ChecklistItem.id.asc()).all()
-
-
-@router.post("/{ticket_id}/checklist", response_model=ChecklistItemOut)
-def create_checklist_item(
-    ticket_id: int,
-    payload: ChecklistItemCreate,
-    db: Session = Depends(get_db),
-    _=Depends(require_roles("backoffice", "admin")),
-):
-    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Not found")
-    item = ChecklistItem(ticket_id=ticket_id, label=payload.label, required=payload.required)
-    db.add(item)
-    db.add(TicketEvent(ticket_id=ticket_id, event_type="checklist_item_created", note=payload.label))
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@router.patch("/{ticket_id}/checklist/{item_id}", response_model=ChecklistItemOut)
-def update_checklist_item(
-    ticket_id: int,
-    item_id: int,
-    payload: ChecklistItemUpdate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Not found")
-    if user.role == "technician" and t.technician_id != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id, ChecklistItem.ticket_id == ticket_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Checklist item not found")
-
-    item.done = payload.done
-    item.done_by_user_id = user.id if payload.done else None
-    item.done_at = datetime.utcnow() if payload.done else None
-    db.add(TicketEvent(ticket_id=ticket_id, actor_user_id=user.id, event_type="checklist_item_updated", note=f"{item.label}:{item.done}"))
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@router.put("/{ticket_id}/close-summary", response_model=TicketOut)
-def upsert_close_summary(
-    ticket_id: int,
-    payload: CloseSummaryUpdate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Not found")
-    if user.role == "technician" and t.technician_id != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    t.work_summary = payload.work_summary.strip()
-    t.customer_acceptance = payload.customer_acceptance
-    db.add(TicketEvent(ticket_id=ticket_id, actor_user_id=user.id, event_type="close_summary_upserted", note=t.work_summary[:80]))
-    db.commit()
-    db.refresh(t)
-    return t
-
-
 @router.patch("/{ticket_id}/status", response_model=TicketOut)
 def update_status(
     ticket_id: int,
@@ -194,18 +116,12 @@ def update_status(
     if nxt not in ALLOWED_TRANSITIONS.get(t.status, set()):
         raise HTTPException(status_code=400, detail=f"Transition {t.status} -> {nxt} not allowed")
 
-    # cierre con evidencia mínima + checklist + resumen
+    # cierre con evidencia mínima
     if nxt == "closed":
         photos_count = db.query(Attachment).filter(Attachment.ticket_id == t.id).count()
         sig = db.query(Signature).filter(Signature.ticket_id == t.id).first()
-        required_items = db.query(ChecklistItem).filter(ChecklistItem.ticket_id == t.id, ChecklistItem.required == True).all()
-        required_done = all(i.done for i in required_items) if required_items else False
         if photos_count < 1 or not sig:
             raise HTTPException(status_code=400, detail="Closing requires at least 1 photo and signature")
-        if not required_done:
-            raise HTTPException(status_code=400, detail="Closing requires required checklist completed")
-        if not t.work_summary.strip() or not t.customer_acceptance:
-            raise HTTPException(status_code=400, detail="Closing requires close summary and customer acceptance")
 
     prev = t.status
     t.status = nxt
