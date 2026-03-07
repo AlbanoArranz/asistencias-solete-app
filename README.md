@@ -27,3 +27,22 @@ npx expo start
 - admin@solete.local / admin123
 - backoffice@solete.local / backoffice123
 - tecnico1@solete.local / tecnico123
+
+
+## One-command backend dev
+```bash
+make dev
+```
+
+## Mobile quick start
+```bash
+make mobile-install
+make mobile-start
+```
+
+### Android real device tip
+Set your server LAN IP in `mobile/app.json`:
+```json
+"extra": { "apiUrl": "http://<TU_IP_LAN>:8000/api/v1" }
+```
+Then restart Expo and ensure phone + server are on same Wi‑Fi.

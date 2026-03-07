@@ -11,3 +11,7 @@ npx expo start
 
 ## API URL
 Configura `expo.extra.apiUrl` en `app.json` para emulador/dispositivo real.
+
+
+### Android real device
+Use LAN API URL in `app.json` and restart Expo.
