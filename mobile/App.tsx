@@ -1,176 +1,118 @@
-import React, { useState } from 'react';
-import { SafeAreaView, View, Text, TextInput, Button, FlatList, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { SafeAreaView, View, Text, TextInput, Button, FlatList, TouchableOpacity, StyleSheet, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Signature from 'react-native-signature-canvas';
+import Constants from 'expo-constants';
 
-type Ticket = { id: number; code: string; title: string; status: string; priority: string };
+type Ticket = { id: number; code: string; title: string; status: string; priority: string; technician_id?: number | null };
 type TicketEvent = { id: number; event_type: string; from_status?: string; to_status?: string; note?: string; created_at: string };
 type ChecklistItem = { id: number; label: string; required: boolean; done: boolean };
 type Notification = { id: number; kind: string; title: string; ticket_id?: number; read: boolean; created_at: string };
-const API = 'http://localhost:8000/api/v1';
+
+const API = (Constants.expoConfig?.extra as any)?.apiUrl || 'http://localhost:8000/api/v1';
 
 export default function App() {
   const [email, setEmail] = useState('tecnico1@solete.local');
   const [password, setPassword] = useState('tecnico123');
   const [token, setToken] = useState<string | null>(null);
-  const [role, setRole] = useState<string>("technician");
+  const [role, setRole] = useState<string>('technician');
+  const [loading, setLoading] = useState(false);
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
-  const [scheduleDay, setScheduleDay] = useState<string>(new Date().toISOString().slice(0,10));
+  const [scheduleDay, setScheduleDay] = useState<string>(new Date().toISOString().slice(0, 10));
   const [scheduleTickets, setScheduleTickets] = useState<Ticket[]>([]);
-  const [assignTechId, setAssignTechId] = useState<string>("3");
+  const [assignTechId, setAssignTechId] = useState<string>('3');
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
 
+  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  const requestJson = async (url: string, init?: RequestInit, options?: { silent?: boolean }) => {
+    try {
+      const res = await fetch(url, init);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (!options?.silent) Alert.alert('Error', data?.detail || 'Error de API');
+        return null;
+      }
+      return data;
+    } catch {
+      if (!options?.silent) Alert.alert('Error de red', 'No se pudo conectar con el servidor');
+      return null;
+    }
+  };
+
   const login = async () => {
-    const res = await fetch(`${API}/auth/login`, {
+    setLoading(true);
+    const data = await requestJson(`${API}/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
     });
-    const data = await res.json();
-    if (data.access_token) {
+    if (data?.access_token) {
       setToken(data.access_token);
-      const meRes = await fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${data.access_token}` } });
-      const me = await meRes.json();
+      const me = await requestJson(`${API}/auth/me`, { headers: { Authorization: `Bearer ${data.access_token}` } }, { silent: true });
       setRole(me?.role || 'technician');
       await loadTickets(data.access_token, statusFilter);
       await loadUnreadCount(data.access_token);
       await loadNotifications(data.access_token);
     }
+    setLoading(false);
   };
 
   const loadTickets = async (jwt = token, filter = statusFilter) => {
     if (!jwt) return;
     const query = filter ? `?status=${encodeURIComponent(filter)}` : '';
-    const res = await fetch(`${API}/tickets${query}`, { headers: { Authorization: `Bearer ${jwt}` } });
-    const data = await res.json();
+    const data = await requestJson(`${API}/tickets${query}`, { headers: { Authorization: `Bearer ${jwt}` } }, { silent: true });
     setTickets(Array.isArray(data) ? data : []);
   };
 
   const openTicket = async (t: Ticket) => {
     setSelected(t);
     if (!token) return;
-    const [evRes, ckRes] = await Promise.all([
-      fetch(`${API}/tickets/${t.id}/events`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${API}/tickets/${t.id}/checklist`, { headers: { Authorization: `Bearer ${token}` } })
+    const [evData, ckData] = await Promise.all([
+      requestJson(`${API}/tickets/${t.id}/events`, { headers: authHeaders }, { silent: true }),
+      requestJson(`${API}/tickets/${t.id}/checklist`, { headers: authHeaders }, { silent: true }),
     ]);
-    const evData = await evRes.json();
-    const ckData = await ckRes.json();
     setEvents(Array.isArray(evData) ? evData : []);
     setChecklist(Array.isArray(ckData) ? ckData : []);
   };
 
   const changeStatus = async (nextStatus: string) => {
-    if (!token || !selected) return;
-    const res = await fetch(`${API}/tickets/${selected.id}/status`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status: nextStatus })
+    if (!selected) return;
+    const data = await requestJson(`${API}/tickets/${selected.id}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ status: nextStatus })
     });
-    const data = await res.json();
     if (data?.id) {
       setSelected(data);
       await loadTickets(token, statusFilter);
+      await loadUnreadCount(token);
       await openTicket(data);
-    } else {
-      Alert.alert('Error', data?.detail || 'No se pudo cambiar estado');
     }
   };
-
-  const uploadPhoto = async () => {
-    if (!token || !selected) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permiso requerido', 'Concede acceso a galería.');
-      return;
-    }
-
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-    if (picked.canceled || !picked.assets?.length) return;
-
-    const asset = picked.assets[0];
-    const uri = asset.uri;
-    const filename = asset.fileName || `photo-${Date.now()}.jpg`;
-    const mime = asset.mimeType || 'image/jpeg';
-
-    const form = new FormData();
-    // @ts-ignore
-    form.append('file', { uri, name: filename, type: mime });
-
-    const res = await fetch(`${API}/tickets/${selected.id}/attachments/upload`, {
-      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form
-    });
-
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      Alert.alert('Error upload', e?.detail || 'No se pudo subir foto');
-      return;
-    }
-    Alert.alert('OK', 'Foto subida');
-    await openTicket(selected);
-  };
-
-  const saveSignature = async (signatureDataUrl: string) => {
-    if (!token || !selected) return;
-    const res = await fetch(`${API}/tickets/${selected.id}/signature`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ signer_name: 'Cliente', signer_role: 'Responsable', image_base64: signatureDataUrl })
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      Alert.alert('Error firma', e?.detail || 'No se pudo guardar firma');
-      return;
-    }
-    Alert.alert('OK', 'Firma guardada');
-    await openTicket(selected);
-  };
-
-
-
-  const toggleChecklist = async (item: ChecklistItem) => {
-    if (!token || !selected) return;
-    await fetch(`${API}/tickets/${selected.id}/checklist/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ done: !item.done })
-    });
-    await openTicket(selected);
-  };
-
-  const saveCloseSummary = async () => {
-    if (!token || !selected) return;
-    await fetch(`${API}/tickets/${selected.id}/close-summary`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ work_summary: 'Trabajo realizado en máquina y validado con cliente.', customer_acceptance: true })
-    });
-    await openTicket(selected);
-  };
-
-
-
-
-
-
 
   const loadNotifications = async (jwt = token) => {
     if (!jwt) return;
-    const res = await fetch(`${API}/notifications`, { headers: { Authorization: `Bearer ${jwt}` } });
-    const data = await res.json();
+    const data = await requestJson(`${API}/notifications`, { headers: { Authorization: `Bearer ${jwt}` } }, { silent: true });
     setNotifications(Array.isArray(data) ? data : []);
+  };
+
+  const loadUnreadCount = async (jwt = token) => {
+    if (!jwt) return;
+    const data = await requestJson(`${API}/notifications/unread-count`, { headers: { Authorization: `Bearer ${jwt}` } }, { silent: true });
+    setUnreadCount(Number(data?.unread || 0));
   };
 
   const markNotificationRead = async (n: Notification) => {
     if (!token) return;
-    await fetch(`${API}/notifications/${n.id}/read`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    await requestJson(`${API}/notifications/${n.id}/read`, { method: 'POST', headers: authHeaders }, { silent: true });
     await loadNotifications(token);
     await loadUnreadCount(token);
     if (n.ticket_id) {
-      const res = await fetch(`${API}/tickets/${n.ticket_id}`, { headers: { Authorization: `Bearer ${token}` } });
-      const ticket = await res.json();
+      const ticket = await requestJson(`${API}/tickets/${n.ticket_id}`, { headers: authHeaders }, { silent: true });
       if (ticket?.id) {
         setShowNotifications(false);
         await openTicket(ticket);
@@ -178,40 +120,74 @@ export default function App() {
     }
   };
 
-  const loadUnreadCount = async (jwt = token) => {
-    if (!jwt) return;
-    const res = await fetch(`${API}/notifications/unread-count`, { headers: { Authorization: `Bearer ${jwt}` } });
-    const data = await res.json();
-    setUnreadCount(Number(data?.unread || 0));
-  };
-
   const loadSchedule = async () => {
     if (!token) return;
     const q = `?day=${encodeURIComponent(scheduleDay)}`;
-    const res = await fetch(`${API}/tickets/schedule${q}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
+    const data = await requestJson(`${API}/tickets/schedule${q}`, { headers: authHeaders }, { silent: true });
     setScheduleTickets(Array.isArray(data) ? data : []);
   };
 
   const reassignSelected = async () => {
-    if (!token || !selected || role === 'technician') return;
-    await fetch(`${API}/tickets/${selected.id}/assign`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ technician_id: Number(assignTechId) })
+    if (!selected || role === 'technician') return;
+    await requestJson(`${API}/tickets/${selected.id}/assign`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ technician_id: Number(assignTechId) })
     });
     await openTicket(selected);
     await loadTickets(token, statusFilter);
-    await loadUnreadCount(token);
+  };
+
+  const uploadPhoto = async () => {
+    if (!selected || !token) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return Alert.alert('Permiso requerido', 'Concede acceso a galería');
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+    if (picked.canceled || !picked.assets?.length) return;
+
+    const a = picked.assets[0];
+    const form = new FormData();
+    // @ts-ignore
+    form.append('file', { uri: a.uri, name: a.fileName || `photo-${Date.now()}.jpg`, type: a.mimeType || 'image/jpeg' });
+
+    const res = await fetch(`${API}/tickets/${selected.id}/attachments/upload`, { method: 'POST', headers: authHeaders, body: form });
+    if (!res.ok) return Alert.alert('Error', 'No se pudo subir foto');
+    Alert.alert('OK', 'Foto subida');
+    await openTicket(selected);
+  };
+
+  const saveSignature = async (signatureDataUrl: string) => {
+    if (!selected) return;
+    await requestJson(`${API}/tickets/${selected.id}/signature`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ signer_name: 'Cliente', signer_role: 'Responsable', image_base64: signatureDataUrl })
+    });
+    await openTicket(selected);
+  };
+
+  const toggleChecklist = async (item: ChecklistItem) => {
+    if (!selected) return;
+    await requestJson(`${API}/tickets/${selected.id}/checklist/${item.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ done: !item.done })
+    });
+    await openTicket(selected);
+  };
+
+  const saveCloseSummary = async () => {
+    if (!selected) return;
+    await requestJson(`${API}/tickets/${selected.id}/close-summary`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ work_summary: 'Trabajo realizado y validado con cliente.', customer_acceptance: true })
+    });
+    await openTicket(selected);
   };
 
   if (!token) {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>Asistencias Solete</Text>
+        <Text style={{ marginBottom: 8 }}>API: {API}</Text>
         <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" />
         <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" />
-        <Button title="Entrar" onPress={login} />
+        {loading ? <ActivityIndicator /> : <Button title="Entrar" onPress={login} />}
       </SafeAreaView>
     );
   }
@@ -219,8 +195,14 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <View><Text style={styles.title}>Mis partes</Text><Text>Nuevas asignaciones: {unreadCount}</Text></View>
-        <View style={{flexDirection:"row", gap:8}}><Button title="Notif" onPress={async () => { await loadNotifications(); setShowNotifications(!showNotifications); }} /><Button title="Refrescar" onPress={async () => { await loadTickets(); await loadUnreadCount(); await loadNotifications(); }} /></View>
+        <View>
+          <Text style={styles.title}>Mis partes</Text>
+          <Text>Nuevas asignaciones: {unreadCount}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button title="Notif" onPress={async () => { await loadNotifications(); setShowNotifications(!showNotifications); }} />
+          <Button title="Refrescar" onPress={async () => { await loadTickets(); await loadUnreadCount(); await loadNotifications(); }} />
+        </View>
       </View>
 
       {showNotifications && (
@@ -242,10 +224,11 @@ export default function App() {
             <TextInput style={[styles.input, { flex: 1 }]} value={statusFilter} onChangeText={setStatusFilter} placeholder="Filtro estado" />
             <Button title="Filtrar" onPress={() => loadTickets(token, statusFilter)} />
           </View>
+
           <Text style={styles.subtitle}>Agenda (día)</Text>
           <View style={styles.filterRow}>
             <TextInput style={[styles.input, { flex: 1 }]} value={scheduleDay} onChangeText={setScheduleDay} placeholder="YYYY-MM-DD" />
-            <Button title="Cargar agenda" onPress={loadSchedule} />
+            <Button title="Cargar" onPress={loadSchedule} />
           </View>
           {scheduleTickets.map((st) => (
             <View key={`sch-${st.id}`} style={styles.eventItem}>
@@ -289,11 +272,6 @@ export default function App() {
               </View>
             )}
 
-            <Text style={styles.subtitle}>Firma cliente</Text>
-            <View style={{ height: 180, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, overflow: 'hidden' }}>
-              <Signature onOK={saveSignature} descriptionText="Firma aquí" clearText="Limpiar" confirmText="Guardar" webStyle={`.m-signature-pad--footer {display:flex;}`}/>
-            </View>
-
             <Text style={styles.subtitle}>Checklist</Text>
             {checklist.map((it) => (
               <View key={it.id} style={styles.eventItem}>
@@ -302,6 +280,11 @@ export default function App() {
               </View>
             ))}
             <Button title="Guardar resumen cierre" onPress={saveCloseSummary} />
+
+            <Text style={styles.subtitle}>Firma cliente</Text>
+            <View style={{ height: 180, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, overflow: 'hidden' }}>
+              <Signature onOK={saveSignature} descriptionText="Firma aquí" clearText="Limpiar" confirmText="Guardar" />
+            </View>
 
             <Text style={styles.subtitle}>Timeline</Text>
             {events.map((ev) => (

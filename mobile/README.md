@@ -7,3 +7,7 @@ npx expo start
 ```
 
 > Update API base URL in `App.tsx` for real device/emulator.
+
+
+## API URL
+Configura `expo.extra.apiUrl` en `app.json` para emulador/dispositivo real.

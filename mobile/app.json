@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Asistencias Solete",
+    "slug": "asistencias-solete-mobile",
+    "version": "0.1.0",
+    "extra": {
+      "apiUrl": "http://localhost:8000/api/v1"
+    }
+  }
+}
