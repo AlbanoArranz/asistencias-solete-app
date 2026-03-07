@@ -3,6 +3,7 @@ from app.core.config import settings
 from app.db.session import Base, engine, SessionLocal
 from app.models.user import User
 from app.models.ticket import Ticket
+from app.models.ticket_event import TicketEvent
 from app.services.security import hash_password
 from app.api.auth import router as auth_router
 from app.api.tickets import router as tickets_router
