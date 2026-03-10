@@ -14,9 +14,13 @@ need_cmd() {
 need_cmd curl
 need_cmd python3
 
+curl_json() {
+  curl -fsS --connect-timeout 5 --max-time 20 "$@"
+}
+
 echo "[seed] BASE_URL=$BASE_URL DAY=$DAY TECH_ID=$TECH_ID"
 
-LOGIN_JSON=$(curl -fsS -X POST "$BASE_URL/api/v1/auth/login" \
+LOGIN_JSON=$(curl_json -X POST "$BASE_URL/api/v1/auth/login" \
   -H 'Content-Type: application/json' \
   -d "{\"email\":\"$BACKOFFICE_EMAIL\",\"password\":\"$BACKOFFICE_PASSWORD\"}")
 TOKEN=$(python3 -c 'import json,sys;print(json.loads(sys.stdin.read()).get("access_token",""))' <<< "$LOGIN_JSON")
@@ -28,7 +32,7 @@ create_ticket() {
   local priority="$3"
 
   local TJSON
-  TJSON=$(curl -fsS -X POST "$BASE_URL/api/v1/tickets" \
+  TJSON=$(curl_json -X POST "$BASE_URL/api/v1/tickets" \
     -H "Authorization: Bearer $TOKEN" \
     -H 'Content-Type: application/json' \
     -d "{\"title\":\"$title\",\"description\":\"$desc\",\"priority\":\"$priority\",\"technician_id\":$TECH_ID}")
@@ -37,13 +41,13 @@ create_ticket() {
   TID=$(python3 -c 'import json,sys;print(json.loads(sys.stdin.read()).get("id",""))' <<< "$TJSON")
   [[ -n "$TID" ]] || { echo "Could not parse ticket id"; exit 1; }
 
-  curl -fsS -X PATCH "$BASE_URL/api/v1/tickets/$TID/schedule" \
+  curl_json -X PATCH "$BASE_URL/api/v1/tickets/$TID/schedule" \
     -H "Authorization: Bearer $TOKEN" \
     -H 'Content-Type: application/json' \
     -d "{\"scheduled_start_at\":\"${DAY}T09:00:00\",\"scheduled_end_at\":\"${DAY}T11:00:00\"}" >/dev/null
 
   for item in "Inspección inicial" "Prueba funcional" "Checklist seguridad"; do
-    curl -fsS -X POST "$BASE_URL/api/v1/tickets/$TID/checklist" \
+    curl_json -X POST "$BASE_URL/api/v1/tickets/$TID/checklist" \
       -H "Authorization: Bearer $TOKEN" \
       -H 'Content-Type: application/json' \
       -d "{\"label\":\"$item\",\"required\":true}" >/dev/null
